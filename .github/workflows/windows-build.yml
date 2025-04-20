@@ -1,0 +1,35 @@
+name: Build Windows EXE
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r auto_reply/requirements.txt
+        pip install pyinstaller
+
+    - name: Build exe with PyInstaller
+      run: |
+        pyinstaller --onefile --noconsole auto_reply/auto_reply_gui.py --name auto_reply_gui
+
+    - name: Upload exe to artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: auto_reply_gui_exe
+        path: dist/auto_reply_gui.exe
