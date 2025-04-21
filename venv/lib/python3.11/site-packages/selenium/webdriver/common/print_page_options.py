@@ -16,13 +16,19 @@
 # under the License.
 
 
+import sys
 from typing import TYPE_CHECKING
 from typing import List
 from typing import Optional
 
+# necessary to support types for Python 3.7
 if TYPE_CHECKING:
-    from typing import Literal
-    from typing import TypedDict
+    if sys.version_info >= (3, 8):
+        from typing import Literal
+        from typing import TypedDict
+    else:
+        from typing_extensions import Literal
+        from typing_extensions import TypedDict
 
     Orientation = Literal["portrait", "landscape"]
 
@@ -406,7 +412,9 @@ class PrintOptions:
         self._margin: _MarginOpts = {}
 
     def to_dict(self) -> _PrintOpts:
-        """:Returns: A hash of print options configured."""
+        """
+        :Returns: A hash of print options configured
+        """
         return self._print_options
 
     def _validate_num_property(self, property_name: str, value: float) -> None:
