@@ -27,9 +27,12 @@ import undetected_chromedriver as uc
 from threading import Event
 
 class NaverBot:
-    def __init__(self, id, pw, nickname, use_gemini, start_page, end_page, log_callback=None, stop_flag=None):
-        load_dotenv()
-        self.gemini_api_key = os.getenv('GEMINI_API_KEY')
+    def __init__(self, id, pw, nickname, use_gemini, start_page, end_page, log_callback=None, stop_flag=None, gemini_api_key=None):
+        if gemini_api_key:
+            self.gemini_api_key = gemini_api_key
+        else:
+            load_dotenv()
+            self.gemini_api_key = os.getenv('GEMINI_API_KEY')
         self.cookies = {}
         self.headers = {
             'accept': '*/*',
@@ -38,7 +41,8 @@ class NaverBot:
             'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36'
         }
         self.driver = None
-        genai.configure(api_key=self.gemini_api_key)
+        if self.gemini_api_key:
+            genai.configure(api_key=self.gemini_api_key)
         self.model = genai.GenerativeModel('gemini-2.0-flash')
         self.comment_templates = [
             "좋은 글 잘 읽었습니다. 감사합니다!",
@@ -568,7 +572,7 @@ class NaverBot:
 class BotThread(QThread):
     log_signal = pyqtSignal(str)
     finished_signal = pyqtSignal()
-    def __init__(self, id, pw, nickname, use_gemini, start_page, end_page):
+    def __init__(self, id, pw, nickname, use_gemini, start_page, end_page, gemini_api_key):
         super().__init__()
         from threading import Event
         self.id = id
@@ -577,10 +581,11 @@ class BotThread(QThread):
         self.use_gemini = use_gemini
         self.start_page = start_page
         self.end_page = end_page
+        self.gemini_api_key = gemini_api_key
         self._stop_flag = Event()
     def run(self):
         try:
-            bot = NaverBot(self.id, self.pw, self.nickname, self.use_gemini, self.start_page, self.end_page, log_callback=self.log_signal.emit, stop_flag=self._stop_flag)
+            bot = NaverBot(self.id, self.pw, self.nickname, self.use_gemini, self.start_page, self.end_page, log_callback=self.log_signal.emit, stop_flag=self._stop_flag, gemini_api_key=self.gemini_api_key)
             bot.initialize_driver()
             if not bot.login():
                 self.log_signal.emit("로그인에 실패했습니다. 프로그램을 종료합니다.")
@@ -625,6 +630,12 @@ class MainWindow(QMainWindow):
         nickname_layout.addWidget(nickname_label)
         nickname_layout.addWidget(self.nickname_input)
         input_layout.addLayout(nickname_layout)
+        gemini_layout = QHBoxLayout()
+        gemini_label = QLabel("Gemini API Key:")
+        self.gemini_input = QLineEdit()
+        gemini_layout.addWidget(gemini_label)
+        gemini_layout.addWidget(self.gemini_input)
+        input_layout.addLayout(gemini_layout)
         comment_type_layout = QHBoxLayout()
         comment_type_label = QLabel("댓글 생성 방식:")
         self.comment_type_combo = QComboBox()
@@ -672,7 +683,8 @@ class MainWindow(QMainWindow):
             "nickname": self.nickname_input.text().strip(),
             "comment_type": self.comment_type_combo.currentIndex(),
             "start_page": self.start_page_spin.value(),
-            "end_page": self.end_page_spin.value()
+            "end_page": self.end_page_spin.value(),
+            "gemini_api_key": self.gemini_input.text().strip()
         }
         try:
             with open(self.SETTINGS_PATH, "w", encoding="utf-8") as f:
@@ -693,6 +705,7 @@ class MainWindow(QMainWindow):
             self.comment_type_combo.setCurrentIndex(settings.get("comment_type", 0))
             self.start_page_spin.setValue(settings.get("start_page", 1))
             self.end_page_spin.setValue(settings.get("end_page", 1))
+            self.gemini_input.setText(settings.get("gemini_api_key", ""))
         except Exception as e:
             QMessageBox.warning(self, "불러오기 실패", f"설정 불러오기 중 오류: {str(e)}")
 
@@ -703,8 +716,12 @@ class MainWindow(QMainWindow):
         use_gemini = self.comment_type_combo.currentIndex() == 1
         start_page = self.start_page_spin.value()
         end_page = self.end_page_spin.value()
+        gemini_api_key = self.gemini_input.text().strip()
         if not id or not pw or not nickname:
             QMessageBox.warning(self, "입력 오류", "아이디, 비밀번호, 닉네임을 모두 입력해주세요.")
+            return
+        if use_gemini and not gemini_api_key:
+            QMessageBox.warning(self, "입력 오류", "Gemini API Key를 입력해주세요.")
             return
         if start_page > end_page:
             QMessageBox.warning(self, "입력 오류", "시작 페이지는 끝 페이지보다 작거나 같아야 합니다.")
@@ -712,7 +729,7 @@ class MainWindow(QMainWindow):
         self.start_btn.setEnabled(False)
         self.stop_btn.setEnabled(True)
         self.log_text.clear()
-        self.bot_thread = BotThread(id, pw, nickname, use_gemini, start_page, end_page)
+        self.bot_thread = BotThread(id, pw, nickname, use_gemini, start_page, end_page, gemini_api_key)
         self.bot_thread.log_signal.connect(self.append_log)
         self.bot_thread.finished_signal.connect(self.bot_finished)
         self.bot_thread.start()
